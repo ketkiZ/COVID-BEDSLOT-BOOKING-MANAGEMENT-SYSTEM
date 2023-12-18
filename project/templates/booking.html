@@ -16,6 +16,10 @@
         <h4 class="text-center text-success">Covid Care Center</h4>
         <div class="card-body bg-light">
           <form action="/slotbooking" method="post">
+
+            <!-- Adding CSRF token -->
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            
             <div class="form-group">
               <input
                 type="text"

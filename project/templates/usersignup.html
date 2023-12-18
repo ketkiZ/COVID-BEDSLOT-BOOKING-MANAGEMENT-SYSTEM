@@ -11,6 +11,9 @@
 
 <form action="/signup" method="post">
 
+<!-- Adding CSRF token -->
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
 <div class="form-group">
 <input type="text" class="form-control mt-2" placeholder="Enter  SRF ID" name="srf" required>
 </div>

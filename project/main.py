@@ -4,8 +4,11 @@ from flask.helpers import url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash,check_password_hash
+from flask_wtf.csrf import CSRFProtect, CSRFError
 
 from flask_login import login_required,logout_user,login_user,login_manager,LoginManager,current_user
+
+from .forms import SignupForm, HospitalLoginForm, AdminForm, SlotBookingForm, DeleteForm, EditForm, HospitalInfoForm, HospitalUserForm, LoginForm
 
 from flask_mail import Mail
 import json
@@ -15,6 +18,7 @@ import json
 local_server=True
 app=Flask(__name__)
 app.secret_key="yashraj"
+csrf = CSRFProtect(app) # Apply CSRF Protection globally
 
 
 with open('config.json','r') as c:
@@ -110,28 +114,30 @@ def trigers():
 
 @app.route('/signup',methods=['POST','GET'])
 def signup():
-    if request.method=="POST":
-        srfid=request.form.get('srf')
-        email=request.form.get('email')
-        dob=request.form.get('dob')
-        # print(srfid,email,dob)
-        encpassword=generate_password_hash(dob)
-        user=User.query.filter_by(srfid=srfid).first()
-        emailUser=User.query.filter_by(email=email).first()
-        if user or emailUser:
-            flash("Email or srif is already taken","warning")
-            return render_template("usersignup.html")
-        new_user=db.engine.execute(f"INSERT INTO `user` (`srfid`,`email`,`dob`) VALUES ('{srfid}','{email}','{encpassword}') ")
-                
-        flash("SignUp Success Please Login","success")
-        return render_template("userlogin.html")
+        form = SignupForm(request.form)
+        if request.method=="POST" and form.validate():
+            srfid=request.form.get('srf')
+            email=request.form.get('email')
+            dob=request.form.get('dob')
+            # print(srfid,email,dob)
+            encpassword=generate_password_hash(dob)
+            user=User.query.filter_by(srfid=srfid).first()
+            emailUser=User.query.filter_by(email=email).first()
+            if user or emailUser:
+                flash("Email or srif is already taken","warning")
+                return render_template("usersignup.html")
+            new_user=db.engine.execute(f"INSERT INTO `user` (`srfid`,`email`,`dob`) VALUES ('{srfid}','{email}','{encpassword}') ")
+                    
+            flash("SignUp Success Please Login","success")
+            return render_template("userlogin.html")
 
-    return render_template("usersignup.html")
+        return render_template("usersignup.html")
 
 
 @app.route('/login',methods=['POST','GET'])
 def login():
-    if request.method=="POST":
+    form = LoginForm(request.form)
+    if request.method=="POST" and form.validate():
         srfid=request.form.get('srf')
         dob=request.form.get('dob')
         user=User.query.filter_by(srfid=srfid).first()
@@ -148,7 +154,8 @@ def login():
 
 @app.route('/hospitallogin',methods=['POST','GET'])
 def hospitallogin():
-    if request.method=="POST":
+    form = HospitalLoginForm(request.form)
+    if request.method=="POST" and form.validate():
         email=request.form.get('email')
         password=request.form.get('password')
         user=Hospitaluser.query.filter_by(email=email).first()
@@ -165,8 +172,8 @@ def hospitallogin():
 
 @app.route('/admin',methods=['POST','GET'])
 def admin():
- 
-    if request.method=="POST":
+    form = AdminForm(request.form)
+    if request.method=="POST" and form.validate():
         username=request.form.get('username')
         password=request.form.get('password')
         if(username==params['user'] and password==params['password']):
@@ -189,10 +196,10 @@ def logout():
 
 @app.route('/addHospitalUser',methods=['POST','GET'])
 def hospitalUser():
-   
+    form = HospitalUserForm(request.form)
     if('user' in session and session['user']==params['user']):
       
-        if request.method=="POST":
+        if request.method=="POST" and form.validate():
             hcode=request.form.get('hcode')
             email=request.form.get('email')
             password=request.form.get('password')        
@@ -237,12 +244,13 @@ def logoutadmin():
 
 @app.route("/addhospitalinfo",methods=['POST','GET'])
 def addhospitalinfo():
+    form = HospitalInfoForm(request.form)
     email=current_user.email
     posts=Hospitaluser.query.filter_by(email=email).first()
     code=posts.hcode
     postsdata=Hospitaldata.query.filter_by(hcode=code).first()
 
-    if request.method=="POST":
+    if request.method=="POST" and form.validate():
         hcode=request.form.get('hcode')
         hname=request.form.get('hname')
         nbed=request.form.get('normalbed')
@@ -270,9 +278,10 @@ def addhospitalinfo():
 @app.route("/hedit/<string:id>",methods=['POST','GET'])
 @login_required
 def hedit(id):
+    form = EditForm(request.form)
     posts=Hospitaldata.query.filter_by(id=id).first()
   
-    if request.method=="POST":
+    if request.method=="POST" and form.validate():
         hcode=request.form.get('hcode')
         hname=request.form.get('hname')
         nbed=request.form.get('normalbed')
@@ -291,8 +300,12 @@ def hedit(id):
 @app.route("/hdelete/<string:id>",methods=['POST','GET'])
 @login_required
 def hdelete(id):
-    db.engine.execute(f"DELETE FROM `hospitaldata` WHERE `hospitaldata`.`id`={id}")
-    flash("Date Deleted","danger")
+    form = DeleteForm(request.form)
+    if request.method == 'POST' and form.validate():
+        db.engine.execute(f"DELETE FROM `hospitaldata` WHERE `hospitaldata`.`id`={id}")
+        flash("Date Deleted","danger")
+        return redirect("/addhospitalinfo")
+    
     return redirect("/addhospitalinfo")
 
 
@@ -310,8 +323,9 @@ def pdetails():
 @app.route("/slotbooking",methods=['POST','GET'])
 @login_required
 def slotbooking():
+    form = SlotBookingForm(request.form)
     query=db.engine.execute(f"SELECT * FROM `hospitaldata` ")
-    if request.method=="POST":
+    if request.method=="POST" and form.validate():
         srfid=request.form.get('srfid')
         bedtype=request.form.get('bedtype')
         hcode=request.form.get('hcode')
@@ -371,7 +385,10 @@ def slotbooking():
     
     return render_template("booking.html",query=query)
 
-
+# Add CSRF error handling
+@app.csrf_error(CSRFError)
+def handle_csrf_error(e):
+    return render_template('csrf_error.html', reason=e), 400
 
 
 app.run(debug=True)
