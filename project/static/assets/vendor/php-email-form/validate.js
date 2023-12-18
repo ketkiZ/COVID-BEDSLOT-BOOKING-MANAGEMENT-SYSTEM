@@ -3,6 +3,9 @@
 * URL: https://bootstrapmade.com/php-email-form/
 * Author: BootstrapMade.com
 */
+
+import DOMPurify from 'dompurify'; /** DOM-XSS Input sanitization library */
+
 (function () {
   "use strict";
 
@@ -78,7 +81,7 @@
 
   function displayError(thisForm, error) {
     thisForm.querySelector('.loading').classList.remove('d-block');
-    thisForm.querySelector('.error-message').innerHTML = error;
+    thisForm.querySelector('.error-message').innerHTML = DOMPurify.sanitize(error);
     thisForm.querySelector('.error-message').classList.add('d-block');
   }
 
