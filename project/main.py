@@ -1,14 +1,16 @@
-from flask import Flask, json,redirect,render_template,flash,request
+from flask import Flask, json, redirect, render_template,flash, request
 from flask.globals import request, session
 from flask.helpers import url_for
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import UserMixin
-from werkzeug.security import generate_password_hash,check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf.csrf import CSRFProtect, CSRFError
+from flask_sslify import SSLify
+from sqlalchemy import text
 
-from flask_login import login_required,logout_user,login_user,login_manager,LoginManager,current_user
+from flask_login import login_required, logout_user, login_user, login_manager, LoginManager, current_user
 
-from .forms import SignupForm, HospitalLoginForm, AdminForm, SlotBookingForm, DeleteForm, EditForm, HospitalInfoForm, HospitalUserForm, LoginForm
+from .forms import *
+from .models import *
 
 from flask_mail import Mail
 import json
@@ -19,12 +21,14 @@ local_server=True
 app=Flask(__name__)
 app.secret_key="yashraj"
 csrf = CSRFProtect(app) # Apply CSRF Protection globally
-
+sslify = SSLify(app)
 
 with open('config.json','r') as c:
     params=json.load(c)["params"]
 
-
+# using the Self-signed certificate. setting the ssl context
+if __name__ == '__main__':
+    app.run(ssl_context=('cert.pem', 'key.pem'))
 
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',
@@ -34,7 +38,6 @@ app.config.update(
     MAIL_PASSWORD=params['gmail-password']
 )
 mail = Mail(app)
-
 
 
 # this is for getting the unique user access
@@ -50,55 +53,6 @@ db=SQLAlchemy(app)
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id)) or Hospitaluser.query.get(int(user_id))
-
-
-class Test(db.Model):
-    id=db.Column(db.Integer,primary_key=True)
-    name=db.Column(db.String(50))
-
-
-class User(UserMixin,db.Model):
-    id=db.Column(db.Integer,primary_key=True)
-    srfid=db.Column(db.String(20),unique=True)
-    email=db.Column(db.String(50))
-    dob=db.Column(db.String(1000))
-
-
-class Hospitaluser(UserMixin,db.Model):
-    id=db.Column(db.Integer,primary_key=True)
-    hcode=db.Column(db.String(20))
-    email=db.Column(db.String(50))
-    password=db.Column(db.String(1000))
-
-
-class Hospitaldata(db.Model):
-    id=db.Column(db.Integer,primary_key=True)
-    hcode=db.Column(db.String(20),unique=True)
-    hname=db.Column(db.String(100))
-    normalbed=db.Column(db.Integer)
-    hicubed=db.Column(db.Integer)
-    icubed=db.Column(db.Integer)
-    vbed=db.Column(db.Integer)
-
-class Trig(db.Model):
-    id=db.Column(db.Integer,primary_key=True)
-    hcode=db.Column(db.String(20))
-    normalbed=db.Column(db.Integer)
-    hicubed=db.Column(db.Integer)
-    icubed=db.Column(db.Integer)
-    vbed=db.Column(db.Integer)
-    querys=db.Column(db.String(50))
-    date=db.Column(db.String(50))
-
-class Bookingpatient(db.Model):
-    id=db.Column(db.Integer,primary_key=True)
-    srfid=db.Column(db.String(20),unique=True)
-    bedtype=db.Column(db.String(100))
-    hcode=db.Column(db.String(20))
-    spo2=db.Column(db.Integer)
-    pname=db.Column(db.String(100))
-    pphone=db.Column(db.String(100))
-    paddress=db.Column(db.String(100))
 
 
 @app.route("/")
@@ -126,7 +80,9 @@ def signup():
             if user or emailUser:
                 flash("Email or srif is already taken","warning")
                 return render_template("usersignup.html")
-            new_user=db.engine.execute(f"INSERT INTO `user` (`srfid`,`email`,`dob`) VALUES ('{srfid}','{email}','{encpassword}') ")
+            new_user=db.engine.execute(text
+                                       ("INSERT INTO `user` (`srfid`,`email`,`dob`) VALUES (:srfid, :email, :encpassword)").params
+                                       (srfid=srfid, email=email, encpassword=encpassword))
                     
             flash("SignUp Success Please Login","success")
             return render_template("userlogin.html")
@@ -209,7 +165,8 @@ def hospitalUser():
             if  emailUser:
                 flash("Email or srif is already taken","warning")
          
-            db.engine.execute(f"INSERT INTO `hospitaluser` (`hcode`,`email`,`password`) VALUES ('{hcode}','{email}','{encpassword}') ")
+            db.engine.execute(text("INSERT INTO `hospitaluser` (`hcode`,`email`,`password`) VALUES (:hcode, :email, :encpassword)").params
+                              (hcode=hcode, email=email, encpassword=encpassword))
 
             # my mail starts from here if you not need to send mail comment the below line
            
@@ -264,7 +221,8 @@ def addhospitalinfo():
             flash("Data is already Present you can update it..","primary")
             return render_template("hospitaldata.html")
         if huser:            
-            db.engine.execute(f"INSERT INTO `hospitaldata` (`hcode`,`hname`,`normalbed`,`hicubed`,`icubed`,`vbed`) VALUES ('{hcode}','{hname}','{nbed}','{hbed}','{ibed}','{vbed}')")
+            db.engine.execute(text("INSERT INTO `hospitaldata` (`hcode`,`hname`,`normalbed`,`hicubed`,`icubed`,`vbed`) VALUES (:hcode, :hname, :nbed, :hbed, :ibed, :vbed)").params
+                              (hcode=hcode, hname=hname, nbed=nbed, hbed=hbed, ibed=ibed, vbed=vbed))
             flash("Data Is Added","primary")
         else:
             flash("Hospital Code not Exist","warning")
@@ -289,7 +247,8 @@ def hedit(id):
         ibed=request.form.get('icubeds')
         vbed=request.form.get('ventbeds')
         hcode=hcode.upper()
-        db.engine.execute(f"UPDATE `hospitaldata` SET `hcode` ='{hcode}',`hname`='{hname}',`normalbed`='{nbed}',`hicubed`='{hbed}',`icubed`='{ibed}',`vbed`='{vbed}' WHERE `hospitaldata`.`id`={id}")
+        db.engine.execute(text("UPDATE `hospitaldata` SET `hcode` = :hcode, `hname` = :hname, `normalbed` = :nbed, `hicubed` = :hbed, `icubed` = :ibed, `vbed` = :vbed WHERE `hospitaldata`.`id` = :id").params
+                          (hcode=hcode, hname=hname, nbed=nbed, hbed=hbed, ibed=ibed, vbed=vbed, id=id))
         flash("Slot Updated","info")
         return redirect("/addhospitalinfo")
 
@@ -302,7 +261,7 @@ def hedit(id):
 def hdelete(id):
     form = DeleteForm(request.form)
     if request.method == 'POST' and form.validate():
-        db.engine.execute(f"DELETE FROM `hospitaldata` WHERE `hospitaldata`.`id`={id}")
+        db.engine.execute(text("DELETE FROM `hospitaldata` WHERE `hospitaldata`.`id` = :id").params(id=id))
         flash("Date Deleted","danger")
         return redirect("/addhospitalinfo")
     
@@ -324,7 +283,7 @@ def pdetails():
 @login_required
 def slotbooking():
     form = SlotBookingForm(request.form)
-    query=db.engine.execute(f"SELECT * FROM `hospitaldata` ")
+    query=db.engine.execute(text("SELECT * FROM `hospitaldata` "))
     if request.method=="POST" and form.validate():
         srfid=request.form.get('srfid')
         bedtype=request.form.get('bedtype')
@@ -338,7 +297,7 @@ def slotbooking():
             flash("Hospital Code not exist","warning")
 
         code=hcode
-        dbb=db.engine.execute(f"SELECT * FROM `hospitaldata` WHERE `hospitaldata`.`hcode`='{code}' ")        
+        dbb=db.engine.execute(text("SELECT * FROM `hospitaldata` WHERE `hospitaldata`.`hcode`= :code").params(code=code))   
         bedtype=bedtype
         if bedtype=="NormalBed":       
             for d in dbb:
@@ -389,6 +348,21 @@ def slotbooking():
 @app.csrf_error(CSRFError)
 def handle_csrf_error(e):
     return render_template('csrf_error.html', reason=e), 400
+
+# Error handling for generic server errors
+@app.errorhandler(500)
+def internal_server_error(e):
+    return render_template('500.html'), 500
+
+# Error handling for page not found (404) errors
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+# Error handling for other HTTP methods not allowed
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return render_template('405.html'), 405
 
 
 app.run(debug=True)
