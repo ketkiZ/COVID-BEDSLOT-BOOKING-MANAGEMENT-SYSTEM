@@ -23,7 +23,7 @@ from logging.handlers import RotatingFileHandler
 # mydatabase connection
 local_server=True
 app=Flask(__name__)
-app.secret_key=os.environ("SECRET_KEY")
+app.secret_key=os.environ["SECRET_KEY"]
 csrf = CSRFProtect(app) # Apply CSRF Protection globally
 sslify = SSLify(app)
 
