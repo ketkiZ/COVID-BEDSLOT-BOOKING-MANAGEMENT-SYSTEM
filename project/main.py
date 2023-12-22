@@ -9,17 +9,21 @@ from sqlalchemy import text
 
 from flask_login import login_required, logout_user, login_user, login_manager, LoginManager, current_user
 
-from .forms import *
-from .models import *
+from forms import *
+from models import *
 
 from flask_mail import Mail
 import json
+import os
+
+import logging
+from logging.handlers import RotatingFileHandler
 
 
 # mydatabase connection
 local_server=True
 app=Flask(__name__)
-app.secret_key="yashraj"
+app.secret_key=os.environ("SECRET_KEY")
 csrf = CSRFProtect(app) # Apply CSRF Protection globally
 sslify = SSLify(app)
 
@@ -39,26 +43,38 @@ app.config.update(
 )
 mail = Mail(app)
 
-
 # this is for getting the unique user access
 login_manager=LoginManager(app)
 login_manager.login_view='login'
 
 # app.config['SQLALCHEMY_DATABASE_URI']='mysql://username:password@localhost/databsename'
-app.config['SQLALCHEMY_DATABASE_URI']='mysql://root:@localhost/covid'
+app.config['SQLALCHEMY_DATABASE_URI']='mysql://root:@localhost/covid_new'
 db=SQLAlchemy(app)
-
-
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id)) or Hospitaluser.query.get(int(user_id))
 
+# Create a logger object. Create a rotating file handler which will create the log file dynamically at the specified location and set the log format.
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+file_handler = RotatingFileHandler('/logs/application.log', maxBytes=10240, backupCount=5)
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] - %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+if __name__ == "__main__":
+    app.logger.addHandler(file_handler)
+
 
 @app.route("/")
 def home():
-   
-    return render_template("index.html")
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        logger.error(f"Error in home route: {str(e)}")
+        # Redirect to 404 error handler
+        return page_not_found(404)
 
 @app.route("/trigers")
 def trigers():
@@ -78,13 +94,15 @@ def signup():
             user=User.query.filter_by(srfid=srfid).first()
             emailUser=User.query.filter_by(email=email).first()
             if user or emailUser:
-                flash("Email or srif is already taken","warning")
+                flash("Email or srfid is already taken","warning")
+                logger.warning("Email or srfid is already taken for user %s", user)
                 return render_template("usersignup.html")
             new_user=db.engine.execute(text
                                        ("INSERT INTO `user` (`srfid`,`email`,`dob`) VALUES (:srfid, :email, :encpassword)").params
                                        (srfid=srfid, email=email, encpassword=encpassword))
                     
-            flash("SignUp Success Please Login","success")
+            flash("SignUp Success. Please Login","success")
+            logger.info("The SignUp for user %s is successful", new_user)
             return render_template("userlogin.html")
 
         return render_template("usersignup.html")
@@ -100,9 +118,11 @@ def login():
         if user and check_password_hash(user.dob,dob):
             login_user(user)
             flash("Login Success","info")
+            logger.info("Login successful for user %s", user)
             return render_template("index.html")
         else:
             flash("Invalid Credentials","danger")
+            logger.error("Invalid credentials for user %s", user)
             return render_template("userlogin.html")
 
 
@@ -118,9 +138,11 @@ def hospitallogin():
         if user and check_password_hash(user.password,password):
             login_user(user)
             flash("Login Success","info")
+            logger.info("Login successful for user %s", user)
             return render_template("index.html")
         else:
             flash("Invalid Credentials","danger")
+            logger.error("Invalid credentials for user %s", user)
             return render_template("hospitallogin.html")
 
 
@@ -135,9 +157,11 @@ def admin():
         if(username==params['user'] and password==params['password']):
             session['user']=username
             flash("login success","info")
+            logger.info("Login successful for user %s", username)
             return render_template("addHosUser.html")
         else:
             flash("Invalid Credentials","danger")
+            logger.error("Invalid credentials for user %s", username)
 
     return render_template("admin.html")
 
@@ -146,6 +170,7 @@ def admin():
 def logout():
     logout_user()
     flash("Logout SuccessFul","warning")
+    logger.info("Logout successful for user %s", current_user )
     return redirect(url_for('login'))
 
 
@@ -173,9 +198,11 @@ def hospitalUser():
             mail.send_message('COVID CARE CENTER',sender=params['gmail-user'],recipients=[email],body=f"Welcome thanks for choosing us\nYour Login Credentials Are:\n Email Address: {email}\nPassword: {password}\n\nHospital Code {hcode}\n\n Do not share your password\n\n\nThank You..." )
 
             flash("Data Sent and Inserted Successfully","warning")
+            logger.info("Data Sent and Inserted Successfully for user %s", current_user)
             return render_template("addHosUser.html")
     else:
         flash("Login and try Again","warning")
+        logger.error("Data insertion was unsuccessful for user %s", current_user)
         return render_template("addHosUser.html")
     
 
@@ -195,6 +222,7 @@ def test():
 def logoutadmin():
     session.pop('user')
     flash("You are logout admin", "primary")
+    logger.info("Logout admin for user %s", current_user)
 
     return redirect('/admin')
 
@@ -219,16 +247,16 @@ def addhospitalinfo():
         hduser=Hospitaldata.query.filter_by(hcode=hcode).first()
         if hduser:
             flash("Data is already Present you can update it..","primary")
+            logger.info("Data is already Present you can update it.")
             return render_template("hospitaldata.html")
         if huser:            
             db.engine.execute(text("INSERT INTO `hospitaldata` (`hcode`,`hname`,`normalbed`,`hicubed`,`icubed`,`vbed`) VALUES (:hcode, :hname, :nbed, :hbed, :ibed, :vbed)").params
                               (hcode=hcode, hname=hname, nbed=nbed, hbed=hbed, ibed=ibed, vbed=vbed))
             flash("Data Is Added","primary")
+            logger.info("Data is added to the database successfully for user %s", current_user)
         else:
             flash("Hospital Code not Exist","warning")
-
-
-
+            logger.warning("Hospital Code not Exist")
 
     return render_template("hospitaldata.html",postsdata=postsdata)
 
@@ -250,6 +278,7 @@ def hedit(id):
         db.engine.execute(text("UPDATE `hospitaldata` SET `hcode` = :hcode, `hname` = :hname, `normalbed` = :nbed, `hicubed` = :hbed, `icubed` = :ibed, `vbed` = :vbed WHERE `hospitaldata`.`id` = :id").params
                           (hcode=hcode, hname=hname, nbed=nbed, hbed=hbed, ibed=ibed, vbed=vbed, id=id))
         flash("Slot Updated","info")
+        logger.info("Slot Updated for user %s", current_user)
         return redirect("/addhospitalinfo")
 
     # posts=Hospitaldata.query.filter_by(id=id).first()
@@ -263,6 +292,7 @@ def hdelete(id):
     if request.method == 'POST' and form.validate():
         db.engine.execute(text("DELETE FROM `hospitaldata` WHERE `hospitaldata`.`id` = :id").params(id=id))
         flash("Date Deleted","danger")
+        logger.info("Data Deleted for user %s", current_user)
         return redirect("/addhospitalinfo")
     
     return redirect("/addhospitalinfo")
@@ -294,7 +324,8 @@ def slotbooking():
         paddress=request.form.get('paddress')  
         check2=Hospitaldata.query.filter_by(hcode=hcode).first()
         if not check2:
-            flash("Hospital Code not exist","warning")
+            flash("Hospital Code does not exist","warning")
+            logger.warning("Hospital Code does not exist")
 
         code=hcode
         dbb=db.engine.execute(text("SELECT * FROM `hospitaldata` WHERE `hospitaldata`.`hcode`= :code").params(code=code))   
@@ -307,7 +338,6 @@ def slotbooking():
                 ar.normalbed=seat-1
                 db.session.commit()
                 
-            
         elif bedtype=="HICUBed":      
             for d in dbb:
                 seat=d.hicubed
@@ -339,8 +369,10 @@ def slotbooking():
             db.session.add(res)
             db.session.commit()
             flash("Slot is Booked kindly Visit Hospital for Further Procedure","success")
+            logger.info("Slot is Booked for user %s", current_user)
         else:
             flash("Something Went Wrong","danger")
+            logger.info("Something is wrong while booking the slot for user %s", current_user)
     
     return render_template("booking.html",query=query)
 
@@ -365,4 +397,4 @@ def method_not_allowed(e):
     return render_template('405.html'), 405
 
 
-app.run(debug=True)
+app.run(debug=False)
